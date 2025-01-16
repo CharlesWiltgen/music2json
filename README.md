@@ -6,7 +6,6 @@ A TypeScript utility that scans a music library directory and generates a JSON f
 
 - Extracts metadata from various audio formats (MP3, M4A, FLAC, OGG, etc.)
 - Processes files in batches for improved performance
-- Handles large music libraries efficiently
 - Provides detailed error reporting
 - Configurable via environment variables or command line arguments
 
