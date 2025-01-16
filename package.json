@@ -1,0 +1,39 @@
+{
+  "name": "music2json",
+  "version": "1.0.0",
+  "description": "A TypeScript utility that scans a music library directory and generates a JSON file containing metadata about artists, albums, and tracks",
+  "type": "module",
+  "main": "dist/music2json.js",
+  "bin": {
+    "music2json": "./dist/music2json.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "NODE_NO_WARNINGS=1 node --loader ts-node/esm music2json.ts",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "music",
+    "metadata",
+    "json",
+    "audio",
+    "library"
+  ],
+  "author": "Charles Wiltgen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CharlesWiltgen/music2json.git"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "music-metadata": "^8.1.4",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/yargs": "^17.0.33",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
+  }
+}
