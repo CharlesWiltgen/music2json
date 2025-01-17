@@ -17,16 +17,16 @@ type SupportedFileType = typeof SUPPORTED_FILE_TYPES[number];
 
 type Track = {
   title: string;
-  genres: string[];
 };
 
 type Album = {
-  name: string;
+  albumTitle: string;
+  genres: string[];
   tracks: Track[];
 };
 
 type Artist = {
-  name: string;
+  artistName: string;
   albums: Album[];
 };
 
@@ -71,7 +71,7 @@ async function getVersion(): Promise<string> {
 async function processAlbum(albumPath: string, albumName: string): Promise<{ album: Album | null; errors: ProcessingError[] }> {
   const errors: ProcessingError[] = [];
   try {
-    const album: Album = { name: albumName, tracks: [] };
+    const album: Album = { albumTitle: albumName, tracks: [], genres: [] };
     
     // Get the list of music files
     const trackFiles = await fs.readdir(albumPath, { withFileTypes: true });
@@ -83,6 +83,7 @@ async function processAlbum(albumPath: string, albumName: string): Promise<{ alb
 
     // Process files in batches of 10
     const batchSize = 10;
+    let allGenres = new Set<string>();
     for (let i = 0; i < musicFiles.length; i += batchSize) {
       const batch = musicFiles.slice(i, Math.min(i + batchSize, musicFiles.length));
       const batchPromises = batch.map(async (trackFile) => {
@@ -94,9 +95,12 @@ async function processAlbum(albumPath: string, albumName: string): Promise<{ alb
             skipCovers: true,
           });
           
+          if (common.genre) {
+            common.genre.forEach(genre => allGenres.add(genre));
+          }
+          
           return {
             title: common.title || trackFile.name,
-            genres: common.genre || [],
           };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -110,6 +114,8 @@ async function processAlbum(albumPath: string, albumName: string): Promise<{ alb
       album.tracks.push(...tracks);
     }
 
+    album.genres = Array.from(allGenres);
+
     return { 
       album: album.tracks.length > 0 ? album : null, 
       errors 
@@ -121,20 +127,21 @@ async function processAlbum(albumPath: string, albumName: string): Promise<{ alb
   }
 }
 
-async function scanDirectory(directory: string): Promise<{ artists: Artist[]; errors: ProcessingError[] }> {
+async function scanDirectory(directory: string, limit: number): Promise<{ artists: Artist[]; errors: ProcessingError[] }> {
   const artists: Artist[] = [];
   const errors: ProcessingError[] = [];
   console.log(`Scanning directory: ${directory}`);
 
   // Get the list of artist directories
   const artistDirs = await fs.readdir(directory, { withFileTypes: true });
+  const dirsToProcess = limit > 0 ? artistDirs.slice(0, limit) : artistDirs;
 
   // Process artists sequentially
-  for (const artistDir of artistDirs) {
+  for (const artistDir of dirsToProcess) {
     if (artistDir.isDirectory()) {
       const artistPath = join(directory, artistDir.name);
       console.log(`Processing artist: ${artistDir.name}`);
-      const artist: Artist = { name: artistDir.name, albums: [] };
+      const artist: Artist = { artistName: artistDir.name, albums: [] };
 
       // Get the list of album directories
       const albumDirs = await fs.readdir(artistPath, { withFileTypes: true });
@@ -179,6 +186,12 @@ async function main() {
       description: 'Output directory or file path',
       default: process.env.OUTPUT_PATH || '.'
     })
+    .option('limit', {
+      alias: 'l',
+      type: 'number',
+      description: 'Limit the number of artists to process',
+      default: 0
+    })
     .version('version', 'Show version number', version)
     .alias('version', 'v')
     .help()
@@ -186,6 +199,7 @@ async function main() {
 
   const musicDirectory = argv['music-dir'];
   let outputPath = argv.output;
+  const limit = argv.limit;
 
   if (!musicDirectory) {
     console.error('Error: Music directory not specified. Please provide it via .env file or --music-dir argument');
@@ -228,12 +242,20 @@ async function main() {
     const outputDir = dirname(outputFile);
     await fs.mkdir(outputDir, { recursive: true });
 
-    const { artists, errors } = await scanDirectory(musicDirectory);
+    const { artists, errors } = await scanDirectory(musicDirectory, limit);
     
     // Save progress even if we encounter errors
     if (artists.length > 0) {
       console.log(`\nWriting ${artists.length} artists to file...`);
-      await fs.writeFile(outputFile, JSON.stringify(artists, null, 2), "utf-8");
+      const jsonString = JSON.stringify(artists, null, 2);
+      
+      // Replace multi-line genre arrays with single-line
+      const compactJson = jsonString.replace(
+        /("genres":\s*\[)([\s\n]*)((?:[^[\]]|\[[^\]]*\])*)([\s\n]*)(\])/g,
+        (_, start, ws1, items, ws2, end) => `${start}${items.trim().replace(/\s+/g, ' ')}${end}`
+      );
+      
+      await fs.writeFile(outputFile, compactJson, "utf-8");
       console.log(`Music library JSON saved to ${outputFile}`);
     }
 
