@@ -20,13 +20,13 @@ type Track = {
 };
 
 type Album = {
-  albumTitle: string;
+  album: string;
   genres: string[];
   tracks: Track[];
 };
 
 type Artist = {
-  artistName: string;
+  artist: string;
   albums: Album[];
 };
 
@@ -71,7 +71,7 @@ async function getVersion(): Promise<string> {
 async function processAlbum(albumPath: string, albumName: string): Promise<{ album: Album | null; errors: ProcessingError[] }> {
   const errors: ProcessingError[] = [];
   try {
-    const album: Album = { albumTitle: albumName, tracks: [], genres: [] };
+    const album: Album = { album: albumName, tracks: [], genres: [] };
     
     // Get the list of music files
     const trackFiles = await fs.readdir(albumPath, { withFileTypes: true });
@@ -141,15 +141,33 @@ async function scanDirectory(directory: string, limit: number): Promise<{ artist
     if (artistDir.isDirectory()) {
       const artistPath = join(directory, artistDir.name);
       console.log(`Processing artist: ${artistDir.name}`);
-      const artist: Artist = { artistName: artistDir.name, albums: [] };
+      const artist: Artist = { artist: artistDir.name, albums: [] };
 
       // Get the list of album directories
       const albumDirs = await fs.readdir(artistPath, { withFileTypes: true });
+      const albumsToProcess = albumDirs
+        .filter(dir => dir.isDirectory())
+        .slice(0, limit || undefined);  // Only apply limit if it's set
+      
+      // Log progress
+      process.stdout.write(`Processing ${albumsToProcess.length} albums `);
 
-      // Process albums sequentially
-      for (const albumDir of albumDirs) {
-        if (albumDir.isDirectory()) {
-          const result = await processAlbum(join(artistPath, albumDir.name), albumDir.name);
+      // Process albums in batches
+      const ALBUM_BATCH_SIZE = 3; // Adjust this based on network performance
+      for (let i = 0; i < albumsToProcess.length; i += ALBUM_BATCH_SIZE) {
+        const batch = albumsToProcess.slice(i, i + ALBUM_BATCH_SIZE);
+        process.stdout.write("💿".repeat(batch.length));
+        
+        // Process batch of albums in parallel
+        const albumPromises = batch.map(albumDir => 
+          processAlbum(join(artistPath, albumDir.name), albumDir.name)
+        );
+
+        // Wait for the current batch to complete
+        const results = await Promise.all(albumPromises);
+        
+        // Collect results
+        for (const result of results) {
           if (result.album) {
             artist.albums.push(result.album);
           }
@@ -160,6 +178,7 @@ async function scanDirectory(directory: string, limit: number): Promise<{ artist
       if (artist.albums.length > 0) {
         artists.push(artist);
       }
+      process.stdout.write('\n');
     }
   }
 
@@ -247,15 +266,45 @@ async function main() {
     // Save progress even if we encounter errors
     if (artists.length > 0) {
       console.log(`\nWriting ${artists.length} artists to file...`);
-      const jsonString = JSON.stringify(artists, null, 2);
       
-      // Replace multi-line genre arrays with single-line
-      const compactJson = jsonString.replace(
-        /("genres":\s*\[)([\s\n]*)((?:[^[\]]|\[[^\]]*\])*)([\s\n]*)(\])/g,
-        (_, start, ws1, items, ws2, end) => `${start}${items.trim().replace(/\s+/g, ' ')}${end}`
-      );
+      // Helper function to format JSON string
+      const formatJsonString = (str: string) => JSON.stringify(str).slice(1, -1);
       
-      await fs.writeFile(outputFile, compactJson, "utf-8");
+      // Format the artists structure
+      const formattedJson = artists.map(artist => {
+        const formattedAlbums = artist.albums.map(album => {
+          // Format tracks
+          const formattedTracks = album.tracks
+            .map(track => `          { "title": "${formatJsonString(track.title)}" }`)
+            .join(',\n');
+
+          // Format genres
+          const formattedGenres = album.genres
+            .map(genre => `"${formatJsonString(genre)}"`)
+            .join(', ');
+
+          // Return formatted album
+          return `      {
+        "album": "${formatJsonString(album.album)}",
+        "tracks": [
+${formattedTracks}
+        ],
+        "genres": [${formattedGenres}]
+      }`;
+        }).join(',\n');
+
+        // Return formatted artist
+        return `  {
+    "artist": "${formatJsonString(artist.artist)}",
+    "albums": [
+${formattedAlbums}
+    ]
+  }`;
+      }).join(',\n');
+
+      // Write the final JSON
+      const finalJson = `[\n${formattedJson}\n]`;
+      await fs.writeFile(outputFile, finalJson, "utf-8");
       console.log(`Music library JSON saved to ${outputFile}`);
     }
 

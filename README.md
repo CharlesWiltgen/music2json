@@ -6,7 +6,7 @@ A TypeScript utility that scans a music library directory and generates a JSON f
 
 - Extracts metadata from various audio formats (MP3, M4A, FLAC, OGG, etc.)
 - Processes files in batches for improved performance
-- Provides detailed error reporting
+- Useful error reporting
 - Configurable via environment variables or command line arguments
 
 ## Installation
@@ -45,12 +45,25 @@ music2json
 # Or with explicit paths
 music2json --music-dir="/Volumes/Media/Music" --output="/path/to/output"
 
+# Process only the first N artists
+music2json --limit=5
+
 # Show version
 music2json --version
 
 # Show help
 music2json --help
 ```
+
+## Command Line Options
+
+- `--music-dir`: Path to your music library directory
+- `--output`: Path where the JSON output should be saved
+- `--limit`: Maximum number of artists to process
+- `--version`: Show version information
+- `--help`: Show help information
+
+## Output Files
 
 The script will generate:
 - `music_metadata.json`: Contains the successfully processed music library metadata
